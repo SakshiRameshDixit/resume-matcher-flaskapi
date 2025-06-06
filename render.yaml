@@ -15,5 +15,5 @@ services:
     env: python
     plan: free
     region: oregon
-    buildCommand: pip install -r similarity/requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn similarity.main:app --host 0.0.0.0 --port 8000
