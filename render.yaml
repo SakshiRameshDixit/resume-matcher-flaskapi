@@ -3,8 +3,9 @@ services:
     name: resume-matcher-api
     env: node
     plan: free
+    region: oregon
     buildCommand: cd server && npm install
-    startCommand: node server/server.js
+    startCommand: cd server && node server.js
     envVars:
       - key: PYTHON_BACKEND_URL
         value: https://resume-matcher-fastapi.onrender.com
@@ -13,5 +14,6 @@ services:
     name: resume-matcher-fastapi
     env: python
     plan: free
+    region: oregon
     buildCommand: pip install -r similarity/requirements.txt
     startCommand: uvicorn similarity.main:app --host 0.0.0.0 --port 8000
