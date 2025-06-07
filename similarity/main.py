@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import os
+from dotenv import load_dotenv
+load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 
