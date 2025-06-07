@@ -6,3 +6,5 @@ scipy==1.11.1
 transformers>=4.30.0
 huggingface-hub==0.16.4
 pydantic>=1.10,<2.0
+uvicorn[standard]
+
