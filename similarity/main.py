@@ -6,14 +6,14 @@ import os
 from dotenv import load_dotenv
 
 print("Loading .env file...")
-load_dotenv()  # Assumes .env is in current directory now
+load_dotenv()  # Load .env from current directory
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 print(f"HF_TOKEN loaded: {HF_TOKEN is not None and HF_TOKEN != ''}")
 
 app = FastAPI()
 
-# Allow CORS
+# Allow CORS for all origins (adjust for production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,19 +21,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Hugging Face API headers
+# Set Hugging Face API authorization header
 HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-# ✅ Updated models
-BI_ENCODER_MODEL = "thenlper/gte-large"  # Supports inference API
-CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Works fine
+# Use a model compatible with embeddings API
+BI_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-# Input schema
 class ResumeRequest(BaseModel):
     resume: dict
     jobDescription: dict
 
-# Resume preprocessing
 def preprocess_resume(resume_json):
     parts = [
         resume_json.get("summary", ""),
@@ -48,25 +46,28 @@ def preprocess_resume(resume_json):
     print(f"Preprocessed resume text: {result[:200]}...")
     return result
 
-# ✅ Embedding fetch using supported endpoint
 def get_embedding(text: str):
     print(f"Requesting embedding for text (first 100 chars): {text[:100]}...")
     response = requests.post(
-        f"https://api-inference.huggingface.co/pipeline/feature-extraction/{BI_ENCODER_MODEL}",
+        "https://api-inference.huggingface.co/pipeline/feature-extraction",
         headers=HEADERS,
-        json={"inputs": text}
+        json={
+            "inputs": text,
+            "model": BI_ENCODER_MODEL
+        }
     )
     if response.status_code != 200:
         print(f"Embedding API error: {response.status_code} - {response.text}")
         return []
     embedding = response.json()
-    if isinstance(embedding, list) and isinstance(embedding[0], list):
-        print(f"Received embedding of length: {len(embedding[0])}")
-        return embedding[0]
-    print("Unexpected embedding format")
+    if isinstance(embedding, list) and len(embedding) > 0:
+        token_embeddings = embedding[0]
+        avg_embedding = [sum(col) / len(col) for col in zip(*token_embeddings)]
+        print(f"Received embedding vector length: {len(avg_embedding)}")
+        return avg_embedding
+    print("Unexpected embedding format:", embedding)
     return []
 
-# Cross-encoder score via API
 def get_cross_score(text1: str, text2: str):
     print(f"Requesting cross-encoder score...")
     response = requests.post(
@@ -81,9 +82,8 @@ def get_cross_score(text1: str, text2: str):
     print(f"Cross-encoder raw output: {output}")
     if isinstance(output, list) and isinstance(output[0], float):
         return output[0]
-    return output.get("score", 0.5)
+    return output.get("score", 0.5)  # fallback score
 
-# Cosine similarity
 def cosine_similarity(vec1, vec2):
     if not vec1 or not vec2 or len(vec1) != len(vec2):
         print("Invalid vectors for cosine similarity")
@@ -95,7 +95,6 @@ def cosine_similarity(vec1, vec2):
     print(f"Cosine similarity: {similarity}")
     return similarity
 
-# Endpoint
 @app.post("/compare")
 async def compare_similarity(req: ResumeRequest):
     print("Received /compare request")
@@ -103,20 +102,18 @@ async def compare_similarity(req: ResumeRequest):
     job_text = req.jobDescription.get("jobDescription", "")
     print(f"Job description text (first 200 chars): {job_text[:200]}")
 
-    # Embeddings
     resume_embedding = get_embedding(resume_text)
     job_embedding = get_embedding(job_text)
+
     if not resume_embedding or not job_embedding:
-        return {"error": "Failed to get embeddings"}
+        return {"error": "Failed to get embeddings. Check if the model supports feature-extraction API."}
 
     bi_score = cosine_similarity(resume_embedding, job_embedding)
 
-    # Cross-encoder
     raw_score = get_cross_score(resume_text, job_text)
-    cross_score = 1 / (1 + pow(2.71828, -raw_score))  # Sigmoid
+    cross_score = 1 / (1 + pow(2.71828, -raw_score))  # manual sigmoid
     print(f"Raw cross-encoder score: {raw_score}, sigmoid: {cross_score}")
 
-    # Final score
     final_score = (bi_score + cross_score) / 2
     boosted_score = 10 + (100 - 10) * final_score
     print(f"Final boosted similarity score: {boosted_score}")
