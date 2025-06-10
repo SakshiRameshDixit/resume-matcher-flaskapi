@@ -126,12 +126,16 @@ import torch
 import torch.nn.functional as F
 from scipy.spatial.distance import cosine
 from fastapi.middleware.cors import CORSMiddleware
+import os
+
+# Force offline mode to prevent any downloading
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
 
 app = FastAPI()
 
-# Load models
-bi_encoder = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+# Load only local models
+bi_encoder = SentenceTransformer('./models/all-mpnet-base-v2')
+cross_encoder = CrossEncoder('./models/ms-marco-MiniLM-L-6-v2')
 
 # CORS middleware setup
 app.add_middleware(
@@ -178,5 +182,4 @@ async def compare_similarity(req: ResumeRequest):
     final_score = (bi_score + cross_score) / 2
     boosted_score = 10 + (100 - 10) * final_score
 
-    # Return score as native Python float
     return {"similarityScore": float(round(boosted_score, 2))}
